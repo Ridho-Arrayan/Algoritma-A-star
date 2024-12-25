@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>A* Pathfinding with Wave Propagation</title>
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      background: linear-gradient(to right, #243949 0%, #517fa4 100%);
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    #grid {
+      display: grid;
+      grid-template-columns: repeat(20, 25px);
+      grid-template-rows: repeat(20, 25px);
+      gap: 1px;
+      padding: 10px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      max-width: 100%;
+      overflow-x: auto;
+    }
+
+    .cell {
+      width: 25px;
+      height: 25px;
+      background-color: #2a3f50;
+      text-align: center;
+      line-height: 25px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border-radius: 2px;
+    }
+
+    .cell:hover {
+      transform: scale(1.05);
+    }
+
+    .cell.start {
+      background-color: #4ade80 !important;
+    }
+
+    .cell.end {
+      background-color: #f87171 !important;
+    }
+
+    .cell.wall {
+      background-color: #1A1F2C;  /* Changed from black to a darker shade */
+    }
+
+    .cell.open {
+      background-color: #60a5fa;
+    }
+
+    .cell.closed {
+      background-color: #818cf8;
+    }
+
+    .cell.path {
+      background-color: #fbbf24;
+    }
+
+    #buttons {
+      margin-top: 20px;
+      display: flex;
+      gap: 15px;
+    }
+
+    button {
+      padding: 10px 24px;
+      background-color: #3b82f6;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+
+    button:hover {
+      background-color: #2563eb;
+      transform: translateY(-1px);
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 1rem;
+      font-weight: 500;
+    }
+
+    .instructions {
+      text-align: center;
+      margin-bottom: 1rem;
+      font-size: 0.9rem;
+      color: rgba(255, 255, 255, 0.8);
+      padding: 0 1rem;
+    }
+
+    /* Mobile Responsive Styles */
+    @media (max-width: 600px) {
+      #grid {
+        grid-template-columns: repeat(20, 20px);
+        grid-template-rows: repeat(20, 20px);
+        gap: 1px;
+        padding: 5px;
+      }
+
+      .cell {
+        width: 20px;
+        height: 20px;
+        line-height: 20px;
+      }
+
+      h1 {
+        font-size: 1.2rem;
+        margin: 1rem 0;
+      }
+
+      .instructions {
+        font-size: 0.8rem;
+        margin: 0.5rem 1rem;
+      }
+
+      #buttons {
+        gap: 10px;
+      }
+
+      button {
+        padding: 8px 16px;
+        font-size: 12px;
+      }
+    }
+
+    /* Extra Small Devices */
+    @media (max-width: 360px) {
+      #grid {
+        grid-template-columns: repeat(20, 15px);
+        grid-template-rows: repeat(20, 15px);
+      }
+
+      .cell {
+        width: 15px;
+        height: 15px;
+        line-height: 15px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>Algoritma A-star</h1>
+  <div class="instructions">
+    First click: Set start point (green)<br>
+    Second click: Set end point (red)<br>
+    Additional clicks: Add/remove walls (dark)
+  </div>
+  <div id="grid"></div>
+  <div id="buttons">
+    <button id="start">Find Path</button>
+    <button id="reset">Reset Grid</button>
+  </div>
+
+  <script>
+    const gridElement = document.getElementById('grid');
+    const startButton = document.getElementById('start');
+    const resetButton = document.getElementById('reset');
+    const grid = [];
+    const rows = 20;
+    const cols = 20;
+    let start = null;
+    let end = null;
+
+    function createGrid() {
+      for (let row = 0; row < rows; row++) {
+        const rowArray = [];
+        for (let col = 0; col < cols; col++) {
+          const cell = document.createElement('div');
+          cell.classList.add('cell');
+          cell.dataset.row = row;
+          cell.dataset.col = col;
+          cell.addEventListener('click', () => handleCellClick(cell));
+          gridElement.appendChild(cell);
+          rowArray.push(cell);
+        }
+        grid.push(rowArray);
+      }
+    }
+
+    function handleCellClick(cell) {
+      const row = parseInt(cell.dataset.row);
+      const col = parseInt(cell.dataset.col);
+
+      if (!start) {
+        start = { row, col };
+        cell.classList.add('start');
+      } else if (!end) {
+        end = { row, col };
+        cell.classList.add('end');
+      } else {
+        cell.classList.toggle('wall');
+      }
+    }
+
+    async function wavePropagation(start, end) {
+      const queue = [start];
+      const cameFrom = {};
+      const visited = Array.from({ length: rows }, () => Array(cols).fill(false));
+      visited[start.row][start.col] = true;
+
+      while (queue.length > 0) {
+        const current = queue.shift();
+        const { row, col } = current;
+
+        // Jika mencapai tujuan
+        if (row === end.row && col === end.col) {
+          return cameFrom;
+        }
+
+        if (!grid[row][col].classList.contains('start') && !grid[row][col].classList.contains('end')) {
+          grid[row][col].classList.add('closed');
+        }
+
+        for (const neighbor of getNeighbors(current)) {
+          if (visited[neighbor.row][neighbor.col] || grid[neighbor.row][neighbor.col].classList.contains('wall')) {
+            continue;
+          }
+
+          visited[neighbor.row][neighbor.col] = true;
+          queue.push(neighbor);
+          cameFrom[`${neighbor.row},${neighbor.col}`] = current;
+
+          if (!grid[neighbor.row][neighbor.col].classList.contains('start') && !grid[neighbor.row][neighbor.col].classList.contains('end')) {
+            grid[neighbor.row][neighbor.col].classList.add('open');
+          }
+          await sleep(10); // Animasi pencarian lebih cepat
+        }
+      }
+
+      return null; // Tidak ada jalur ditemukan
+    }
+
+    async function findShortestPath(cameFrom, end) {
+      let current = end;
+      const path = [];
+      while (current) {
+        path.push(current);
+        const key = `${current.row},${current.col}`;
+        current = cameFrom[key];
+      }
+      path.reverse();
+
+      for (const cell of path) {
+        const { row, col } = cell;
+        if (!grid[row][col].classList.contains('start') && !grid[row][col].classList.contains('end')) {
+          grid[row][col].classList.add('path');
+          await sleep(50); // Animasi jalur
+        }
+      }
+    }
+
+    function getNeighbors(cell) {
+      const { row, col } = cell;
+      const neighbors = [];
+
+      if (row > 0) neighbors.push({ row: row - 1, col });
+      if (row < rows - 1) neighbors.push({ row: row + 1, col });
+      if (col > 0) neighbors.push({ row, col: col - 1 });
+      if (col < cols - 1) neighbors.push({ row, col: col + 1 });
+
+      return neighbors;
+    }
+
+    function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    startButton.addEventListener('click', async () => {
+      if (start && end) {
+        const cameFrom = await wavePropagation(start, end);
+        if (cameFrom) {
+          await findShortestPath(cameFrom, end);
+        }
+      }
+    });
+
+    resetButton.addEventListener('click', () => {
+      start = null;
+      end = null;
+      grid.forEach(row => {
+        row.forEach(cell => {
+          cell.className = 'cell';
+        });
+      });
+    });
+
+    createGrid();
+  </script>
+</body>
+</html>
